@@ -146,6 +146,7 @@ Resources:
     ApiGatewayV2Api:
         Type: "AWS::ApiGatewayV2::Api"
         Properties:
+            Name: !Sub "${EnvironmentName}-SSOAPIGW"
             ApiKeySelectionExpression: "$request.header.x-api-key"
             ProtocolType: "HTTP"
             RouteSelectionExpression: "$request.method $request.path"
