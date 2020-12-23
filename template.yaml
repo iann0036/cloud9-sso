@@ -13,6 +13,15 @@ Parameters:
         Description: "Instance type of the Cloud9 environment"
         Default: "t2.micro"
 
+    SubnetId:
+        Type: "String"
+        Description: "Subnet of the Cloud9 environment (leave blank for default)"
+        Default: ""
+
+Conditions:
+  
+    SubnetBlank: !Equals [ !Ref SubnetId, "" ]
+
 Mappings:
     RegionMap:
         us-east-1:
@@ -133,6 +142,10 @@ Resources:
         Properties:
             Name: !Ref EnvironmentName
             InstanceType: !Ref InstanceType
+            SubnetId: !If
+              - SubnetBlank
+              - !Ref AWS::NoValue
+              - !Ref SubnetId
 
     SSMParameter:
         Type: "AWS::SSM::Parameter"
