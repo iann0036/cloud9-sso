@@ -1,6 +1,6 @@
 # AWS Cloud9 SSO Integration
 
-<img src="https://github.com/iann0036/cloud9-sso/raw/master/assets/screen1.png" width="245" height="145">
+<img src="https://raw.githubusercontent.com/iann0036/cloud9-sso/main/assets/screen1.png" width="245" height="145">
 
 :exclamation: **CAUTION:** This project is currently in beta stages. Some resources may not work as expected. Please [report these](https://github.com/iann0036/cloud9-sso/issues) if you find them.
 
