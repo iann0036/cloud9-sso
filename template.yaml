@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "Cloud9 SSO Environment"
+
+Parameters:
+
+    EnvironmentName:
+        Type: "String"
+        Description: "Name of the Cloud9 environment to create"
+
+    InstanceType:
+        Type: "String"
+        Description: "Instance type of the Cloud9 environment"
+        Default: "t2.micro"
+
+Mappings:
+    RegionMap:
+        us-east-1:
+            bucketname: ianmckay-us-east-1
+        us-east-2:
+            bucketname: ianmckay-us-east-2
+        us-west-1:
+            bucketname: ianmckay-us-west-1
+        us-west-2:
+            bucketname: ianmckay-us-west-2
+        ap-south-1:
+            bucketname: ianmckay-ap-south-1
+        ap-northeast-2:
+            bucketname: ianmckay-ap-northeast-2
+        ap-southeast-1:
+            bucketname: ianmckay-ap-southeast-1
+        ap-southeast-2:
+            bucketname: ianmckay-ap-southeast-2
+        ap-northeast-1:
+            bucketname: ianmckay-ap-northeast-1
+        ca-central-1:
+            bucketname: ianmckay-ca-central-1
+        eu-central-1:
+            bucketname: ianmckay-eu-central-1
+        eu-west-1:
+            bucketname: ianmckay-eu-west-1
+        eu-west-2:
+            bucketname: ianmckay-eu-west-2
+        eu-west-3:
+            bucketname: ianmckay-eu-west-3
+        eu-north-1:
+            bucketname: ianmckay-eu-north-1
+        sa-east-1:
+            bucketname: ianmckay-sa-east-1
+
+Resources:
+
+    LambdaRole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            RoleName: !Sub "${EnvironmentName}-LambdaRole"
+            AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+            MaxSessionDuration: 3600
+            ManagedPolicyArns:
+              - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+            Policies:
+              - PolicyName: "policy"
+                PolicyDocument: !Sub |
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "ssm:GetParameter",
+                                "Resource": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${EnvironmentName}-SSOArgs"
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "sts:AssumeRole",
+                                "Resource": "arn:aws:iam::${AWS::AccountId}:role/${EnvironmentName}-SSOUser"
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "cloud9:CreateEnvironmentMembership",
+                                "Resource": "${Cloud9EnvironmentEC2.Arn}"
+                            }
+                        ]
+                    }
+
+    SSORole:
+        Type: "AWS::IAM::Role"
+        Properties:
+            RoleName: !Sub "${EnvironmentName}-SSOUser"
+            AssumeRolePolicyDocument: !Sub "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"${LambdaRole.Arn}\"},\"Action\":\"sts:AssumeRole\"}]}"
+            MaxSessionDuration: 3600
+            ManagedPolicyArns: 
+              - "arn:aws:iam::aws:policy/AWSCloud9EnvironmentMember"
+
+    LambdaFunction:
+        Type: "AWS::Lambda::Function"
+        Properties:
+            Environment: 
+                Variables: 
+                    SSO_ROLE: !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvironmentName}-SSOUser"
+                    SSO_SSM_PARAMETER: !Sub "${EnvironmentName}-SSOArgs"
+                    ACCOUNT_ID: !Ref AWS::AccountId
+                    LOG_LEVEL: "info"
+                    ENVIRONMENT_ID: !Ref Cloud9EnvironmentEC2
+            FunctionName: !Sub "${EnvironmentName}-SSOServicer"
+            Handler: "index.handler"
+            Code: 
+                S3Bucket: !FindInMap
+                  - "RegionMap"
+                  - !Ref AWS::Region
+                  - "bucketname"
+                S3Key: "cloud9-sso/app.zip"
+            MemorySize: 128
+            Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvironmentName}-LambdaRole"
+            Runtime: "nodejs12.x"
+            Timeout: 10
+
+    LambdaPermission:
+        Type: "AWS::Lambda::Permission"
+        Properties:
+            Action: "lambda:InvokeFunction"
+            FunctionName: !GetAtt LambdaFunction.Arn
+            Principal: "apigateway.amazonaws.com"
+            SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGatewayV2Api}/*/*/"
+
+    LogsLogGroup:
+        Type: "AWS::Logs::LogGroup"
+        Properties:
+            LogGroupName: !Sub "/aws/lambda/${LambdaFunction}"
+            RetentionInDays: 1
+
+    Cloud9EnvironmentEC2:
+        Type: "AWS::Cloud9::EnvironmentEC2"
+        Properties:
+            Name: !Ref EnvironmentName
+            InstanceType: !Ref InstanceType
+
+    SSMParameter:
+        Type: "AWS::SSM::Parameter"
+        Properties:
+            Name: !Sub "${EnvironmentName}-SSOArgs"
+            Type: "String"
+            Value: "{\"SignInURL\":\"\",\"SignOutURL\":\"\",\"Certificate\":\"\"}"
+            DataType: "text"
+            Tier: "Standard"
+
+    ApiGatewayV2Api:
+        Type: "AWS::ApiGatewayV2::Api"
+        Properties:
+            ApiKeySelectionExpression: "$request.header.x-api-key"
+            ProtocolType: "HTTP"
+            RouteSelectionExpression: "$request.method $request.path"
+            DisableExecuteApiEndpoint: false
+
+    ApiGatewayV2Route:
+        Type: "AWS::ApiGatewayV2::Route"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ApiKeyRequired: false
+            AuthorizationType: "NONE"
+            RouteKey: "GET /"
+            Target: !Sub "integrations/${ApiGatewayV2Integration}"
+
+    ApiGatewayV2Route2:
+        Type: "AWS::ApiGatewayV2::Route"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ApiKeyRequired: false
+            AuthorizationType: "NONE"
+            RouteKey: "POST /"
+            Target: !Sub "integrations/${ApiGatewayV2Integration}"
+
+    ApiGatewayV2Integration:
+        Type: "AWS::ApiGatewayV2::Integration"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            ConnectionType: "INTERNET"
+            IntegrationMethod: "POST"
+            IntegrationType: "AWS_PROXY"
+            IntegrationUri: !GetAtt "LambdaFunction.Arn"
+            TimeoutInMillis: 30000
+            PayloadFormatVersion: "2.0"
+
+Outputs:
+
+    ACSURL:
+        Description: The value for the SSO "ACS URL" field
+        Value: !Sub "https://${ApiGatewayV2Api}.execute-api.${AWS::Region}.amazonaws.com/"
+
+    SAMLAudience:
+        Description: The value for the SSO "SAML Audience" field
+        Value: !Sub "https://${EnvironmentName}.local/metadata.xml"
