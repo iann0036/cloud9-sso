@@ -152,6 +152,13 @@ Resources:
             RouteSelectionExpression: "$request.method $request.path"
             DisableExecuteApiEndpoint: false
 
+    ApiGatewayV2Stage:
+        Type: "AWS::ApiGatewayV2::Stage"
+        Properties:
+            ApiId: !Ref ApiGatewayV2Api
+            AutoDeploy: true
+            StageName: "$default"
+
     ApiGatewayV2Route:
         Type: "AWS::ApiGatewayV2::Route"
         Properties:
