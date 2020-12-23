@@ -110,7 +110,7 @@ Resources:
                   - "bucketname"
                 S3Key: "cloud9-sso/app.zip"
             MemorySize: 128
-            Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/${EnvironmentName}-LambdaRole"
+            Role: !GetAtt "LambdaRole.Arn"
             Runtime: "nodejs12.x"
             Timeout: 10
 

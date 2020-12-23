@@ -129,10 +129,15 @@ async function handleSAMLResponse(event) {
         userArn: "arn:aws:sts::" + process.env.ACCOUNT_ID + ":assumed-role/" + process.env.AWS_LAMBDA_FUNCTION_NAME.replace("-SSOServicer","") + "-SSOUser/" + user.guid
     }).promise().catch(() => { });
 
+    let consolebase = 'https://console.aws.amazon.com/cloud9/ide/';
+    if (process.env.AWS_REGION != "us-east-1") {
+        consolebase = 'https://' + process.env.AWS_REGION + '.console.aws.amazon.com/cloud9/ide/';
+    }
+
     return {
         "statusCode": 302,
         "headers": {
-            "Location": 'https://signin.aws.amazon.com/federation?Action=login&Destination=' + encodeURIComponent('https://console.aws.amazon.com/cloud9/ide/' + process.env.ENVIRONMENT_ID) + '&SigninToken=' + signintoken.data['SigninToken']
+            "Location": 'https://signin.aws.amazon.com/federation?Action=login&Destination=' + encodeURIComponent(consolebase + process.env.ENVIRONMENT_ID) + '&SigninToken=' + signintoken.data['SigninToken']
         }
     };
 }
